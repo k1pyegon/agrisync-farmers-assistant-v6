@@ -1,0 +1,15 @@
+node index.js
+
+taskkill /F /IM chrome.exe /T
+
+taskkill /F /IM node.exe /T
+
+node index.js
+
+pm2 stop 1
+
+pm2 start index.js --name farmer-bot-modular
+
+pm2 restart farmer-bot-modular
+
+pm2 log 1

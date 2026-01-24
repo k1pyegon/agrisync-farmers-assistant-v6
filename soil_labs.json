@@ -1,0 +1,51 @@
+[
+  {
+    "lab_name": "Crop Nutrition Laboratory (CropNuts)",
+    "location": "Limuru (Head Office) & Countrywide Agents",
+    "services": "Complete Soil Analysis, Pathogen testing",
+    "contact": "0720 639 933",
+    "major_town": "Nairobi"
+  },
+  {
+    "lab_name": "KALRO Kabete (National Ag Lab)",
+    "location": "Waiyaki Way, Nairobi",
+    "services": "Standard Soil pH & Nutrient Analysis",
+    "contact": "020 2024751",
+    "major_town": "Nairobi"
+  },
+  {
+    "lab_name": "KALRO Njoro",
+    "location": "Njoro, Nakuru",
+    "services": "Soil Testing for Cereals/Wheat",
+    "contact": "020 3514470",
+    "major_town": "Nakuru"
+  },
+  {
+    "lab_name": "SGS Kenya",
+    "location": "Mombasa & Nairobi",
+    "services": "Certified Chemical Analysis",
+    "contact": "0722 202 145",
+    "major_town": "Mombasa"
+  },
+  {
+    "lab_name": "SoilCares (Scanner Services)",
+    "location": "Mobile Agents Countrywide",
+    "services": "Instant On-site Soil Testing",
+    "contact": "0706 564 564",
+    "major_town": "Eldoret"
+  },
+  {
+    "lab_name": "University of Eldoret Lab",
+    "location": "Chepkoilel, Eldoret",
+    "services": "Academic & Farmer Soil Testing",
+    "contact": "053 2063111",
+    "major_town": "Eldoret"
+  },
+  {
+    "lab_name": "Coffee Research Foundation",
+    "location": "Ruiru",
+    "services": "Specialized Coffee Soil Testing",
+    "contact": "0733 333 088",
+    "major_town": "Thika"
+  }
+]
