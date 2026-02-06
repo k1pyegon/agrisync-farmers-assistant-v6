@@ -1,0 +1,72 @@
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// 🛠️ CONFIGURATION
+const MODEL_PRIMARY = "gemini-2.5-flash-lite"; 
+const MODEL_FALLBACK = "gemini-2.5-flash";
+
+const SYSTEM_INSTRUCTION = `
+You are an expert Agricultural Field Officer in Kenya.
+Your user is a busy farmer communicating via WhatsApp.
+
+### 🚫 STRICT FORMATTING RULES (WHATSAPP STYLE):
+1. **BOLDING:** Use SINGLE asterisks for bold (e.g., *Nitrogen*, *Action*). NEVER use double asterisks (**).
+2. **LISTS:** Use simple hyphens (-) for bullet points.
+3. **NO GREETINGS:** Start immediately with the answer. 
+4. **NO FLUFF:** No closing remarks like "Happy farming."
+
+### 🏪 SHOP RECOMMENDATION RULES:
+1. If shop details are in the Context, you MUST recommend them.
+2. **DO NOT** gatekeep. Even if the user asks for a specific brand (e.g., Pioneer) or item (e.g., seedlings), provide the shop details and say: "Inquire at these verified partners in [Town]:"
+3. Format exactly like this:
+*Shop Name*
+- 👤 Contact: [Contact Person]
+- 📞 Phone: [Phone Number]
+- 📍 Location: [Specific Location]
+`;
+
+async function askAI(userMessage, context, history = "") {
+    const prompt = `
+    ${SYSTEM_INSTRUCTION}
+
+    === CONTEXT ===
+    ${context}
+
+    === HISTORY ===
+    ${history}
+
+    === QUESTION ===
+    User: ${userMessage}
+    
+    Field Officer (Direct Answer):
+    `;
+
+    // 🔄 ATTEMPT 1: PRIMARY
+    try {
+        console.log(`🤖 AI: Attempting with ${MODEL_PRIMARY}...`);
+        const model = genAI.getGenerativeModel({ model: MODEL_PRIMARY });
+        const result = await model.generateContent(prompt);
+        return cleanResponse(result.response.text());
+
+    } catch (error) {
+        console.warn(`⚠️ Primary failed: ${error.message}. Switching to Fallback...`);
+        
+        // 🔄 ATTEMPT 2: FALLBACK
+        try {
+            const model = genAI.getGenerativeModel({ model: MODEL_FALLBACK });
+            const result = await model.generateContent(prompt);
+            return cleanResponse(result.response.text());
+        } catch (finalError) {
+            console.error("❌ Both models failed:", finalError.message);
+            return "I'm having trouble connecting to my brain right now. Please try again in a moment.";
+        }
+    }
+}
+
+function cleanResponse(text) {
+    return text.replace(/\*\*/g, '*').trim();
+}
+
+module.exports = { askAI };

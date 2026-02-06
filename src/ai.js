@@ -4,30 +4,33 @@ require('dotenv').config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 🧠 BRAIN 1: The New Lite Model (Hits limits fast)
-const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+// 🧠 BRAIN 1: The New Lite Model
+const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
-// 🧠 BRAIN 2: The Reliable Backup (Unlimited*)
-// ✅ FIX: Using the alias that we confirmed works for your account
-const backupModel = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+// 🧠 BRAIN 2: The Reliable Backup
+const backupModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 async function generateSmartResponse(historyContext, dataContext, userText, mediaPart) {
     let promptParts = [];
 
-    // Build Prompt
+    // 🔥 STRONGER PROMPT ENGINEERING
     const fullPrompt = `
     ${SYSTEM_INSTRUCTION}
     
-    CONTEXT:
+    CONTEXT FROM CHAT HISTORY:
     ${historyContext}
     
-    DATABASE INFO:
-    ${dataContext}
+    🚨 IMPORTANT LOCAL DATA (PRIORITY):
+    ${dataContext ? dataContext : "(No specific local shops found in database. Use general knowledge.)"}
+
+    INSTRUCTIONS:
+    1. If the "IMPORTANT LOCAL DATA" section above lists specific shops or labs, you **MUST** recommend them.
+    2. Do NOT say "visit any local agrovet" if I have provided a specific partner name and phone number above.
+    3. If the user asks for a shop but none are listed above, ask them: "Which town are you in?"
     `;
 
     promptParts.push(fullPrompt);
 
-    // Clean Media Handling
     if (mediaPart) {
         const cleanApiPart = { inlineData: mediaPart.inlineData };
         promptParts.push(cleanApiPart);
@@ -43,13 +46,10 @@ async function generateSmartResponse(historyContext, dataContext, userText, medi
 
     // 🔄 SMART EXECUTION STRATEGY
     try {
-        // Attempt 1: Try Primary (Lite)
         const result = await primaryModel.generateContent(promptParts);
         return result.response.text();
     } catch (primaryError) {
-        console.log(`⚠️ Primary Brain Busy/Limit. Switching to Backup...`);
-        
-        // Attempt 2: Try Backup (Standard) immediately
+        console.log(`⚠️ Primary Brain Busy. Switching to Backup...`);
         try {
             const result = await backupModel.generateContent(promptParts);
             return result.response.text();
