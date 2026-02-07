@@ -1,19 +1,18 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { SYSTEM_INSTRUCTION } = require('./persona'); 
+const { SYSTEM_INSTRUCTION } = require('../persona'); 
 require('dotenv').config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 🧠 BRAIN 1: The New Lite Model
-const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+// 🧠 BRAIN 1: Gemini 2.0 Flash-Lite (Super Fast & Low Latency)
+const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-// 🧠 BRAIN 2: The Reliable Backup
-const backupModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+// 🧠 BRAIN 2: Gemini 2.0 Flash (Reliable & High Intelligence)
+const backupModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
 async function generateSmartResponse(historyContext, dataContext, userText, mediaPart) {
     let promptParts = [];
 
-    // 🔥 STRONGER PROMPT ENGINEERING
     const fullPrompt = `
     ${SYSTEM_INSTRUCTION}
     
@@ -32,9 +31,7 @@ async function generateSmartResponse(historyContext, dataContext, userText, medi
     promptParts.push(fullPrompt);
 
     if (mediaPart) {
-        const cleanApiPart = { inlineData: mediaPart.inlineData };
-        promptParts.push(cleanApiPart);
-
+        promptParts.push({ inlineData: mediaPart.inlineData });
         if (mediaPart.isAudio) {
             promptParts.push("Listen to this farmer's voice note and provide a technical, actionable answer in English.");
         } else {
@@ -49,7 +46,7 @@ async function generateSmartResponse(historyContext, dataContext, userText, medi
         const result = await primaryModel.generateContent(promptParts);
         return result.response.text();
     } catch (primaryError) {
-        console.log(`⚠️ Primary Brain Busy. Switching to Backup...`);
+        console.log(`⚠️ Primary Brain Busy (2.0 Lite). Switching to Backup (2.0 Flash)...`);
         try {
             const result = await backupModel.generateContent(promptParts);
             return result.response.text();

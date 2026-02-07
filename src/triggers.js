@@ -15,7 +15,7 @@ function checkTriggers(text) {
             reply: "🚨 **EMERGENCY DETECTED** 🚨\n\n" +
                    "Please stop handling chemicals immediately.\n" +
                    "Call the National Poison Board: **0800 720 021**\n" +
-                   "Or rush to the nearest hospital.\n\n" +
+                   "Rush to the nearest hospital if your personal wellbeing has been compromised.\n\n" +
                    "I have notified a human agent to check this chat."
         };
     }
@@ -25,8 +25,10 @@ function checkTriggers(text) {
         return {
             type: 'SUPPORT',
             logToCsv: true,
-            reply: "📞 You can reach our Head Office support line at: **0700-123-456** (Mon-Fri, 8am-5pm).\n\n" +
-                   "I have logged your request for a callback."
+            reply: "📞 You can reach our Head Office support lin at:\n" +
+                   " *0100-345-544** (Mon-Fri, 8am-5pm).\n\n" +
+                   "I have logged your request for a callback.\n" +
+                   "(Current wait time,45 Minutes)"
         };
     }
 
