@@ -1,20 +1,38 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const { getDatabaseContext } = require('./src/database');
+const { getDatabaseContext = () => "" } = require('./src/database');
 const { generateSmartResponse } = require('./src/ai');
 const { checkTriggers } = require('./src/triggers');
 const { logToSheet } = require('./src/sheets');
+const { getChatHistory, saveChatMessage } = require('./src/history'); 
+const { syncShopsFromSheet, getShopCache } = require('./src/shops');
 require('dotenv').config();
 
-const chatHistory = new Map();
 const processedIds = new Set();
 
-// 🛡️ ROBUST ADMIN CONFIGURATION
-// This checks for ADMIN_NUMBER or ADMIN_PHONE to avoid .env errors
+// ⚡ Asynchronous Task Queue
+const aiTaskQueue = [];
+let isQueueActive = false;
+
+async function processTaskQueue() {
+    if (isQueueActive || aiTaskQueue.length === 0) return;
+    isQueueActive = true;
+
+    while (aiTaskQueue.length > 0) {
+        const currentTask = aiTaskQueue.shift();
+        try {
+            await currentTask(); 
+        } catch (error) {
+            console.error("❌ Queue Processing Error:", error.message);
+        }
+    }
+    isQueueActive = false;
+}
+
 const ADMIN_NUMBER = process.env.ADMIN_NUMBER || process.env.ADMIN_PHONE;
 
 if (!ADMIN_NUMBER) {
-    console.error("⚠️ WARNING: No Admin Number found in .env! Admin commands will not work.");
+    console.error("⚠️ WARNING: No Admin Number found in .env!");
 } else {
     console.log(`🔒 Admin System Active for: ${ADMIN_NUMBER}`);
 }
@@ -23,15 +41,18 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
         headless: true, 
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--disable-gpu'] 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote']
     }
 });
 
 client.on('qr', (qr) => { qrcode.generate(qr, { small: true }); });
 
-client.on('ready', () => { 
+client.on('ready', async () => { 
     console.log('✅ FARMERS ASSISTANT IS ONLINE');
     console.log(`📱 Connected as: ${client.info.wid.user}`);
+    
+    await syncShopsFromSheet();
+    setInterval(syncShopsFromSheet, 6 * 60 * 60 * 1000); 
 });
 
 client.on('message_create', async msg => {
@@ -39,28 +60,27 @@ client.on('message_create', async msg => {
     if (msg.isStatus || processedIds.has(msg.id.id)) return;
     processedIds.add(msg.id.id);
 
+    // 🛑 2. ZAO UPGRADE: BLOCK SILENT WHATSAPP SYSTEM MESSAGES
+    const ignoredTypes = ['e2e_notification', 'protocol', 'ciphertext', 'call_log', 'gp2', 'broadcast_notification', 'revoked'];
+    if (ignoredTypes.includes(msg.type)) {
+        console.log(`🔇 Ignored silent system message: ${msg.type}`);
+        return; 
+    }
+
+    // 🛑 3. IGNORE EMPTY MESSAGES
+    if (!msg.body && !msg.hasMedia) return;
+
     const rawFrom = msg.from;
     const senderNumber = rawFrom.replace('@c.us', '');
     const isMe = msg.fromMe;
-    const cleanBody = msg.body.trim(); // Removes accidental spaces at start/end
+    const cleanBody = msg.body ? msg.body.trim() : ""; 
 
-// 👮‍♂️ 2. ADMIN COMMANDS
-    // We check if it STARTS with "!dm" first. 
-    // If it doesn't, we skip this whole block (so "hi" doesn't trigger errors).
+    // 👮‍♂️ ADMIN COMMANDS
     if (cleanBody.toLowerCase().startsWith('!dm') || cleanBody.toLowerCase().startsWith('! dm')) {
-        
-        // 🔒 AUTHENTICATION
-        // Fix: If 'isMe' is true, we trust you immediately. 
-        // We don't compare numbers because of the confusing '@lid' issue.
         const isAuthorized = (senderNumber === ADMIN_NUMBER) || isMe;
-
         if (isAuthorized) {
-            console.log(`🔐 Admin Command Received from ${senderNumber}`);
             try {
-                // Remove the "!dm" part
                 const args = cleanBody.replace(/^!\s?dm\s*/i, '').split(/\s+/);
-                
-                // args[0] is the target number, the rest is the message
                 const targetPhone = args[0].includes('@') ? args[0] : args[0] + '@c.us';
                 const messageContent = args.slice(1).join(' '); 
 
@@ -70,61 +90,84 @@ client.on('message_create', async msg => {
                 console.log(`✅ Sent to ${args[0]}: "${messageContent}"`);
 
                 if (!isMe) await client.sendMessage(msg.from, `✅ Sent to ${args[0]}`);
-
-                if (logToSheet) await logToSheet(args[0], 'Bot (Initiated)', messageContent, "Admin Outreach");
+                if (logToSheet) logToSheet(args[0], 'Bot (Initiated)', messageContent, "Admin Outreach");
 
             } catch (error) {
                 console.error("❌ Admin Error:", error.message);
-                if (!isMe) await client.sendMessage(msg.from, '❌ Usage: !dm 254712345678 Message');
             }
-        } else {
-            // This log ONLY prints if someone tries "!dm" but isn't you.
-            console.log(`⛔ Unauthorized Admin Attempt from ${senderNumber}`);
         }
-        return; // 🛑 STOP HERE for all "!dm" messages (authorized or not)
-    }
-
-    // 🛑 3. IGNORE MYSELF (Standard Bot Behavior)
-    // Now that Admin checks are done, we can safely ignore other messages from the host phone
-    if (isMe) return;
-
-    // 🚜 4. REGULAR FARMER INTERACTION
-    const logContent = msg.hasMedia ? `[Media: ${msg.type}]` : msg.body;
-    
-    // 📊 Log Incoming
-    if (logToSheet) await logToSheet(senderNumber, 'Farmer', logContent, "Incoming");
-
-    // ⚡ Check Triggers (Menu, specific words)
-    const triggerAction = checkTriggers(msg.body.toLowerCase().trim());
-    if (triggerAction) {
-        await client.sendMessage(msg.from, triggerAction.reply);
-        if (logToSheet) await logToSheet(senderNumber, 'Bot', triggerAction.reply, `TRIGGER: ${triggerAction.type}`);
         return; 
     }
 
-    // 🧠 AI Processing
-    try {
-        const dataContext = getDatabaseContext(msg.body);
-        let mediaPart = null;
-        if (msg.hasMedia) {
-            const media = await msg.downloadMedia();
-            mediaPart = { inlineData: { data: media.data, mimeType: media.mimetype }, isAudio: (msg.type === 'ptt') };
-        }
+    if (isMe) return;
 
-        let userHistory = chatHistory.get(msg.from) || [];
-        const historyText = userHistory.map(h => `${h.role}: ${h.text}`).join("\n");
+    const logContent = msg.hasMedia ? `[Media: ${msg.type}]` : msg.body;
+    if (logToSheet) logToSheet(senderNumber, 'Farmer', logContent, "Incoming");
 
-        const replyText = await generateSmartResponse(historyText, dataContext, msg.body, mediaPart);
-        
-        await client.sendMessage(msg.from, replyText);
-        
-        if (logToSheet) await logToSheet(senderNumber, 'Bot', replyText, "AI Response");
-
-        userHistory.push({ role: 'User', text: logContent }, { role: 'Assistant', text: replyText });
-        chatHistory.set(msg.from, userHistory.slice(-6));
-    } catch (e) { 
-        console.error("Error generating response:", e.message); 
+    const triggerAction = checkTriggers(cleanBody.toLowerCase());
+    if (triggerAction) {
+        await client.sendMessage(msg.from, triggerAction.reply);
+        if (logToSheet) logToSheet(senderNumber, 'Bot', triggerAction.reply, `TRIGGER: ${triggerAction.type}`);
+        return; 
     }
+
+    // 🧠 AI Processing Queue
+    aiTaskQueue.push(async () => {
+        try {
+            // 🗣️ UX UPGRADE: Give the farmer visual feedback instantly
+            const chat = await msg.getChat();
+            await chat.sendSeen();
+            await chat.sendStateTyping(); 
+
+            const dataContext = getDatabaseContext(msg.body, getShopCache());
+            let mediaPart = null;
+            
+            if (msg.hasMedia) {
+                const media = await msg.downloadMedia();
+                mediaPart = { inlineData: { data: media.data, mimeType: media.mimetype }, isAudio: (msg.type === 'ptt') };
+            }
+
+            let userHistory = await getChatHistory(msg.from, 6);
+            const historyText = userHistory.map(h => `${h.role}: ${h.text}`).join("\n");
+
+            const startTime = Date.now();
+            const aiResponse = await generateSmartResponse(historyText, dataContext, msg.body, mediaPart);
+            const latency = Date.now() - startTime;
+
+            await client.sendMessage(msg.from, aiResponse.text);
+
+            if (aiResponse.failed) {
+                console.log(`⚠️ [FAILOVER] Sent fallback message to ${senderNumber} after ${latency}ms`);
+            } else {
+                console.log(`✅ [AI SUCCESS] Replied to ${senderNumber} | Time: ${latency}ms | Tokens: ${aiResponse.tokens}`);
+            }
+
+            if (logToSheet) logToSheet(senderNumber, 'Bot', aiResponse.text, "AI Response");
+
+            if (!aiResponse.failed) {
+                await saveChatMessage(msg.from, 'User', logContent);
+                await saveChatMessage(msg.from, 'Assistant', aiResponse.text);
+            }
+
+        } catch (e) { 
+            console.error("❌ Critical Queue Error:", e.message); 
+            await client.sendMessage(msg.from, "Pole sana Mkulima, mfumo wetu una shida kidogo. Tafadhali jaribu tena baadaye.");
+        }
+    });
+
+    processTaskQueue();
+});
+
+// 🛑 ZAO UPGRADE: GRACEFUL SHUTDOWN (Kills Zombie Browsers)
+process.on('SIGINT', async () => {
+    console.log("\n🛑 Shutting down gracefully... closing WhatsApp browser.");
+    try {
+        await client.destroy();
+        console.log("✅ Browser closed. Exiting.");
+    } catch (e) {
+        console.error("❌ Error destroying client:", e.message);
+    }
+    process.exit(0);
 });
 
 client.initialize();

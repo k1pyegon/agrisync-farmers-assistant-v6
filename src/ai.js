@@ -1,58 +1,94 @@
+require('dotenv').config();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { SYSTEM_INSTRUCTION } = require('../persona'); 
-require('dotenv').config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 🧠 BRAIN 1: Gemini 2.0 Flash-Lite (Super Fast & Low Latency)
-const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+// 🧠 PRIMARY BRAIN: Gemini 2.5 Flash
+const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-// 🧠 BRAIN 2: Gemini 2.0 Flash (Reliable & High Intelligence)
-const backupModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+// 🧠 BACKUP BRAIN: Gemini 2.5 Flash Lite
+const backupModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 async function generateSmartResponse(historyContext, dataContext, userText, mediaPart) {
     let promptParts = [];
 
+    // --- STEP 1: BUILD THE CONTEXT ---
     const fullPrompt = `
     ${SYSTEM_INSTRUCTION}
     
-    CONTEXT FROM CHAT HISTORY:
+    CHAT HISTORY:
     ${historyContext}
     
     🚨 IMPORTANT LOCAL DATA (PRIORITY):
-    ${dataContext ? dataContext : "(No specific local shops found in database. Use general knowledge.)"}
-
+    ${dataContext ? dataContext : "(No specific local shops found. Ask for their town.)"}
+    
     INSTRUCTIONS:
-    1. If the "IMPORTANT LOCAL DATA" section above lists specific shops or labs, you **MUST** recommend them.
-    2. Do NOT say "visit any local agrovet" if I have provided a specific partner name and phone number above.
-    3. If the user asks for a shop but none are listed above, ask them: "Which town are you in?"
+    1. If specific shops are listed above, you MUST recommend them.
+    2. Do NOT say "visit any local agrovet" if partner data is provided.
+    3. If no shops are listed, ask: "Which town are you in?"
     `;
 
-    promptParts.push(fullPrompt);
+    promptParts.push({ text: fullPrompt });
 
+    // --- STEP 2: HANDLE MEDIA ---
     if (mediaPart) {
-        promptParts.push({ inlineData: mediaPart.inlineData });
-        if (mediaPart.isAudio) {
-            promptParts.push("Listen to this farmer's voice note and provide a technical, actionable answer in English.");
+        if (!mediaPart.isAudio) {
+            promptParts.push({ inlineData: mediaPart.inlineData });
+            promptParts.push({ text: `User Query: ${userText || "Diagnose this image."}` });
         } else {
-            promptParts.push("Diagnose this crop issue from the photo. Provide specific chemical treatment with dosage.");
+            // 📊 ZAO UPGRADE: Audio fallback must return an object now
+            return {
+                text: "Pole sana Mkulima, siwezi kusikiliza sauti kwa sasa. Tafadhali andika ujumbe wako au tuma picha! 🚜",
+                tokens: 0,
+                failed: true
+            };
         }
     } else {
-        promptParts.push(`User Query: ${userText}`);
+        promptParts.push({ text: `User Query: ${userText || "Hello"}` });
     }
 
-    // 🔄 SMART EXECUTION STRATEGY
+    // --- STEP 3: TRY PRIMARY BRAIN (2.5 FLASH) ---
     try {
-        const result = await primaryModel.generateContent(promptParts);
-        return result.response.text();
+        const result = await primaryModel.generateContent({
+            contents: [{ role: "user", parts: promptParts }],
+            generationConfig: {
+                temperature: 0.1, // Keeps the formatting clean (No Bolding)
+            }
+        });
+        
+        // 📊 ZAO UPGRADE: Return tokens alongside text
+        return { 
+            text: result.response.text(), 
+            tokens: result.response.usageMetadata?.totalTokenCount || 0 
+        };
+
     } catch (primaryError) {
-        console.log(`⚠️ Primary Brain Busy (2.0 Lite). Switching to Backup (2.0 Flash)...`);
+        console.log(`⚠️ Primary Brain Failed/Busy. Switching to Backup (2.5 Flash Lite)...`);
+
+        // --- STEP 4: EMERGENCY BACKUP (2.5 LITE) ---
         try {
-            const result = await backupModel.generateContent(promptParts);
-            return result.response.text();
+            const backupResult = await backupModel.generateContent({
+                contents: [{ role: "user", parts: promptParts }],
+                generationConfig: {
+                    temperature: 0.1,
+                }
+            });
+            
+            // 📊 ZAO UPGRADE: Return tokens alongside text
+            return { 
+                text: backupResult.response.text(), 
+                tokens: backupResult.response.usageMetadata?.totalTokenCount || 0 
+            };
+
         } catch (backupError) {
             console.error("❌ Both Brains Failed:", backupError.message);
-            throw backupError;
+            // 📊 ZAO UPGRADE: Return the failover object
+            return {
+                text: "Pole sana Mkulima, nina shida kidogo ya mtandao kwa sasa. Tafadhali jaribu tena baada ya dakika chache! 🚜",
+                tokens: 0,
+                failed: true
+            };
         }
     }
 }
