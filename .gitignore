@@ -1,7 +1,8 @@
 node_modules/
 .wwebjs_auth/
+.wwebjs_cache/
 .env
 farmer_data.csv
-.env
-.wwebjs_auth/
-.wwebjs_cache/
+
+# Secrets — never commit
+credentials.json

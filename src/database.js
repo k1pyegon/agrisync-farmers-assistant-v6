@@ -21,6 +21,9 @@ function getDatabaseContext(text) {
 
     const matches = allShops.filter(s => {
         const shopTown = (s.town || "").toLowerCase();
+        // Guard blank/too-short towns: "".includes("") is always true, so an empty
+        // Town cell would otherwise match every message and misroute farmers.
+        if (shopTown.length < 3) return false;
         return (majorTown && shopTown === majorTown) || cleanText.includes(shopTown);
     });
 

@@ -9,6 +9,7 @@ const { syncShopsFromSheet, getShopCache } = require('./src/shops');
 require('dotenv').config();
 
 const processedIds = new Set();
+const MAX_PROCESSED_IDS = 5000; // bound the dedup set so it can't leak memory over the process lifetime
 
 // ⚡ Asynchronous Task Queue
 const aiTaskQueue = [];
@@ -59,6 +60,10 @@ client.on('message_create', async msg => {
     // 🛑 1. PREVENT LOOPS & DUPLICATES
     if (msg.isStatus || processedIds.has(msg.id.id)) return;
     processedIds.add(msg.id.id);
+    // Evict the oldest id once over the cap (Set preserves insertion order)
+    if (processedIds.size > MAX_PROCESSED_IDS) {
+        processedIds.delete(processedIds.values().next().value);
+    }
 
     // 🛑 2. ZAO UPGRADE: BLOCK SILENT WHATSAPP SYSTEM MESSAGES
     const ignoredTypes = ['e2e_notification', 'protocol', 'ciphertext', 'call_log', 'gp2', 'broadcast_notification', 'revoked'];
