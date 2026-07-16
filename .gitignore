@@ -6,3 +6,9 @@ farmer_data.csv
 
 # Secrets — never commit
 credentials.json
+
+# Runtime data / farmer PII — never commit
+chat_history.json
+user_database.json
+farmer_data.csv
+*.save
