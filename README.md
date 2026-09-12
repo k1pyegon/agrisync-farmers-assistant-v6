@@ -19,10 +19,10 @@ A specialized WhatsApp bot designed to act as an **Expert Kenyan Field Officer**
 ## 🛠️ Tech Stack
 
 * **Runtime:** Node.js
-* **WhatsApp API:** `whatsapp-web.js` (Puppeteer)
-* **AI Model:** Google Generative AI (Gemini 2.0)
-* **Database/Logging:** Google Sheets API
-* **Process Manager:** PM2
+* **WhatsApp API:** `####
+* **AI Model:** Claude and Google Generative AI
+* **Database/Logging:** ###
+* **Process Manager:** ###
 
 ---
 
